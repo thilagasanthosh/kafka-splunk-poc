@@ -15,6 +15,16 @@ produce ──► Kafka: security-events (3 partitions, key = tenant)
                  │  bad JSON or 4xx → security-events-dlq (with error header), then commit
 ```
 
+## Screenshots
+
+40 fictional events across two tenants, delivered by the forwarder and shown in the Splunk dashboard:
+
+![Splunk dashboard](docs/screenshots/splunk-dashboard.png)
+
+The same events in Splunk search, with JSON fields extracted (`KV_MODE = json` in `splunk/apps/kafka_poc/default/props.conf`):
+
+![Splunk search](docs/screenshots/splunk-search.png)
+
 | File | What it does |
 |---|---|
 | `internal/event` | Event struct, `Parse` returns `ErrInvalid` for poison messages |
@@ -22,7 +32,7 @@ produce ──► Kafka: security-events (3 partitions, key = tenant)
 | `internal/forwarder` | Fetch → parse → send → commit loop; dead-letter routing |
 | `cmd/forwarder` | Wires kafka-go reader, DLQ writer and HEC client from env vars |
 | `cmd/produce` | Publishes fictional sample events (`-n` count, `-bad` adds a broken message) |
-| `splunk/apps/kafka_poc` | Splunk app with the security events dashboard |
+| `splunk/apps/kafka_poc` | Splunk app: security events dashboard and JSON field extraction |
 
 ## Run it
 
@@ -42,7 +52,7 @@ docker compose logs -f forwarder
 Open http://localhost:8000 (user `admin`, your `SPLUNK_PASSWORD`) and search:
 
 ```
-index=main sourcetype=poc:security_event | table _time host event.type event.severity event.user event.indicator
+index=main sourcetype=poc:security_event | table _time host type severity user indicator
 ```
 
 Dashboard: http://localhost:8000/en-US/app/kafka_poc/security_events
