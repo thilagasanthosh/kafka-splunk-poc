@@ -1,0 +1,60 @@
+# Kafka (KRaft, single node) -> Go forwarder -> Splunk HEC
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    ports: ["9094:9094"]          # for go run ./cmd/produce on your laptop
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+      interval: 5s
+      retries: 20
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic security-events --partitions 3 &&
+       /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic security-events-dlq --partitions 1"
+
+  splunk:
+    image: splunk/splunk:9.3.2
+    platform: linux/amd64          # no arm64 image; runs emulated on Apple Silicon (slow first start)
+    ports: ["8000:8000", "8088:8088"]
+    environment:
+      SPLUNK_START_ARGS: ${SPLUNK_START_ARGS:-}   # set to --accept-license in .env after reading the licence
+      SPLUNK_GENERAL_TERMS: ${SPLUNK_GENERAL_TERMS:-}
+      SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:?set SPLUNK_PASSWORD in .env}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:?set SPLUNK_HEC_TOKEN in .env}
+      SPLUNK_HEC_SSL: "false"        # plain HTTP for the PoC only
+    volumes:
+      - splunk-data:/opt/splunk/var
+      - ./splunk/apps/kafka_poc:/opt/splunk/etc/apps/kafka_poc   # dashboard (not :ro, Splunk chowns it)
+    # the image ships its own healthcheck; it turns healthy when Splunk is ready
+
+  forwarder:
+    build: .
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      splunk: { condition: service_healthy }
+    restart: on-failure              # on delivery failure it exits without committing, then re-reads
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      SPLUNK_HEC_URL: http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN}
+
+volumes:
+  splunk-data:

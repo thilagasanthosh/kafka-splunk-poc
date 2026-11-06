@@ -1,0 +1,63 @@
+<dashboard version="1.1" theme="dark">
+  <label>Security events from Kafka</label>
+  <description>Events delivered by the Go forwarder (sourcetype poc:security_event)</description>
+  <row>
+    <panel>
+      <single>
+        <title>Events (last 24h)</title>
+        <search><query>index=main sourcetype=poc:security_event | stats count</query><earliest>-24h</earliest><latest>now</latest></search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Critical</title>
+        <search><query>index=main sourcetype=poc:security_event event.severity=critical | stats count</query><earliest>-24h</earliest><latest>now</latest></search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Users affected</title>
+        <search><query>index=main sourcetype=poc:security_event | stats dc(event.user)</query><earliest>-24h</earliest><latest>now</latest></search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Events by type</title>
+        <search><query>index=main sourcetype=poc:security_event | stats count by event.type | sort - count</query><earliest>-24h</earliest><latest>now</latest></search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Severity by tenant</title>
+        <search><query>index=main sourcetype=poc:security_event | chart count over host by event.severity</query><earliest>-24h</earliest><latest>now</latest></search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Events over time</title>
+        <search><query>index=main sourcetype=poc:security_event | timechart span=5m count by event.type</query><earliest>-2h</earliest><latest>now</latest></search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Latest events</title>
+        <search><query>index=main sourcetype=poc:security_event | sort - _time | head 15 | table _time host event.type event.severity event.user event.indicator event.id</query><earliest>-24h</earliest><latest>now</latest></search>
+      </table>
+    </panel>
+  </row>
+</dashboard>
